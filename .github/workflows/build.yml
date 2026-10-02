@@ -22,16 +22,35 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Extract VoiceShift
+      - name: Extract VoiceShift (if a zip exists)
         run: |
-          unzip -o VoiceShift.zip -d project
+          mkdir -p project
+          zipfile=$(find . -maxdepth 2 -iname '*.zip' -not -path './.git/*' | head -n 1)
+          if [ -n "$zipfile" ]; then
+            echo "Extracting: $zipfile"
+            unzip -o "$zipfile" -d project
+          else
+            echo "No zip found, using files already in the repo"
+          fi
+
+      - name: Find Gradle project
+        run: |
+          settings=$(find . -name 'settings.gradle*' -not -path './.git/*' | head -n 1)
+          if [ -z "$settings" ]; then
+            echo "::error::No Android Gradle project found (no settings.gradle). The zip may only contain an APK, not source code."
+            exit 1
+          fi
+          dir=$(dirname "$settings")
+          echo "Project dir: $dir"
+          echo "PROJECT_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Build APK
-        working-directory: project/VoiceShift-Android
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: VoiceShift-APK
-          path: project/VoiceShift-Android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
